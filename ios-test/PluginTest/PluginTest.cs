@@ -22,7 +22,7 @@ namespace PluginTest
 
 			var dataTemplate = new DataTemplate (typeof(ImageCell));
 			var listView = new ThumbnailListView () {
-				ItemsSource = items
+				Assets = items
 			};
 			listView.ItemTemplate = dataTemplate;
 

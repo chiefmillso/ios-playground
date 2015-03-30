@@ -8,8 +8,9 @@ using System.Collections.Generic;
 using System;
 using System.Drawing;
 using SDWebImage;
-using System.Collections;
-using System.Linq;
+using System.Collections.ObjectModel;
+using System.Diagnostics;
+using System.Collections.Specialized;
 
 [assembly: ExportRenderer(typeof(ThumbnailListView), typeof(ThumbnailRenderer))]
 
@@ -18,6 +19,13 @@ namespace PluginTest.iOS
 	public class ThumbnailRenderer : ViewRenderer<ThumbnailListView, UICollectionView>
 	{
 		static readonly NSString cellId = new NSString ("ImageCell");
+
+		readonly ListViewDataSource source;
+
+		public ThumbnailRenderer ()
+		{
+			source = new ListViewDataSource ();
+		}
 
 		protected override void OnElementChanged (ElementChangedEventArgs<ThumbnailListView> e)
 		{
@@ -30,42 +38,79 @@ namespace PluginTest.iOS
 					var flowLayout = new UICollectionViewFlowLayout ();
 					var view = new UICollectionView (Frame, flowLayout);
 					view.ContentInset = new UIEdgeInsets (10, 10, 10, 10);
-
 					base.SetNativeControl (view);
-					base.Control.Source = new ListViewDataSource (listView, base.Control);
+					CollectionView.Source = source;			
+					CollectionView.RegisterClassForCell (typeof(ImageCell), cellId);
+					Assets = listView.Assets;
 				}
 			}
 
 			base.OnElementChanged (e);
 		}
 
-		protected override void OnElementPropertyChanged (object sender, System.ComponentModel.PropertyChangedEventArgs e)
+		public ObservableCollection<IImageAsset> Assets
 		{
-			base.OnElementPropertyChanged (sender, e);
+			get { return source.Assets; }
+			set {
+				try {
+					if (source.Assets != null) {
+						source.Assets.CollectionChanged -= VisitsOnCollectionChanged;
+					}
+				} catch (Exception e) {
+					Debug.WriteLine (e.Message);
+				}
+				source.Assets = value;
+				if (source.Assets != null) {
+					source.Assets.CollectionChanged += VisitsOnCollectionChanged;
+				}
+				CollectionView.ReloadData ();
+			}
+		}
 
-			Control.ReloadData ();
+		UICollectionView CollectionView {
+			get {
+				return Control;
+			}
+		}
+
+		void VisitsOnCollectionChanged (object sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+		{
+			if (e.Action == NotifyCollectionChangedAction.Add || e.Action == NotifyCollectionChangedAction.Remove)
+			{
+//				BeginInvokeOnMainThread (() => {
+					if (e.NewItems != null) {
+						var indexPaths = new List<NSIndexPath> ();
+						for (int i = 0; i < e.NewItems.Count; i++)
+							indexPaths.Add (NSIndexPath.FromRowSection (e.NewStartingIndex + i, 0));
+						CollectionView.InsertItems (indexPaths.ToArray ());
+					}
+
+					if (e.OldItems != null) {
+						var indexPaths = new List<NSIndexPath> ();
+						for (int i = 0; i < e.OldItems.Count; i++)
+							indexPaths.Add (NSIndexPath.FromRowSection (e.OldStartingIndex + i, 0));
+						CollectionView.DeleteItems (indexPaths.ToArray ());
+					}
+//				);
+			}
 		}
 
 		public class ListViewDataSource : UICollectionViewSource
 		{
-			ThumbnailListView _list;
-			UICollectionView _view;
-
-			public ListViewDataSource (ThumbnailListView list, UICollectionView view)
-			{
-				_list = list;
-				_view = view;
-			}
+			public ObservableCollection<IImageAsset> Assets { get; set; }
 
 			public override nint GetItemsCount (UICollectionView collectionView, nint section)
 			{
-				return 0;
+				if (Assets == null)
+					return 0;
+				return Assets.Count;
 			}
 
 			public override UICollectionViewCell GetCell (UICollectionView collectionView, Foundation.NSIndexPath indexPath)
 			{
 				var imageCell = (ImageCell) collectionView.DequeueReusableCell (cellId, indexPath);
-				imageCell.UpdateCell (null);
+				var asset = Assets[indexPath.Row];
+				imageCell.UpdateCell (asset);
 				return imageCell;
 			}
 
